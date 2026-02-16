@@ -65,3 +65,30 @@ sed -n '1,40p' app/page.tsx
 # Windows PowerShell
 type app\page.tsx
 ```
+
+## Speciaal voor jouw situatie: je ziet wel de branch na `git fetch --all`
+Als `git branch -a` iets toont zoals:
+
+- `remotes/origin/codex/create-file-upload-quiz-website`
+
+dan staat de nieuwe code op die remote branch en moet je die eerst lokaal uitchecken.
+
+Gebruik in PowerShell exact:
+
+```powershell
+git checkout -b codex/create-file-upload-quiz-website origin/codex/create-file-upload-quiz-website
+npm install
+npm run dev
+```
+
+Open daarna:
+
+- http://localhost:3000
+
+Controleer tenslotte:
+
+```powershell
+type app\page.tsx
+```
+
+Als het goed is, begint regel 1 met `"use client";`.

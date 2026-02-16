@@ -92,3 +92,32 @@ type app\page.tsx
 ```
 
 Als het goed is, begint regel 1 met `"use client";`.
+
+## Fout in PowerShell: `npm.ps1 cannot be loaded because running scripts is disabled`
+Je screenshot laat precies deze Windows-beveiliging zien. Je project is goed; alleen PowerShell blokkeert `npm.ps1`.
+
+### Snelste oplossing (zonder policy aan te passen)
+Gebruik `npm.cmd` in plaats van `npm`:
+
+```powershell
+npm.cmd install
+npm.cmd run dev
+```
+
+### Alternatief (policy alleen voor jouw user versoepelen)
+Open PowerShell **als normale gebruiker** en run eenmalig:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Bevestig met `Y`, sluit PowerShell, open opnieuw, en run:
+
+```powershell
+npm install
+npm run dev
+```
+
+Daarna open je:
+
+- http://localhost:3000

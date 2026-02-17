@@ -19,6 +19,13 @@ type KeywordScore = {
   score: number;
 };
 
+type ProcessedFile = {
+  fileName: string;
+  status: "text" | "metadata" | "error";
+  message: string;
+  text: string;
+};
+
 const TEXT_EXTENSIONS = [
   ".txt",
   ".md",
@@ -134,6 +141,7 @@ function scoreKeywords(input: string) {
 
   const sentences = splitIntoSentences(input);
   const spread = new Map<string, number>();
+
   for (const sentence of sentences) {
     const uniqueWords = new Set(extractCandidateWords(sentence));
     uniqueWords.forEach((word) => {
@@ -146,7 +154,7 @@ function scoreKeywords(input: string) {
     score: frequency * 1.4 + (spread.get(word) ?? 0) * 1.8,
   }));
 
-  return ranked.sort((a, b) => b.score - a.score).slice(0, 90);
+  return ranked.sort((a, b) => b.score - a.score).slice(0, 100);
 }
 
 function dedupe<T>(items: T[]) {
@@ -187,20 +195,18 @@ async function readPdfText(file: File) {
 function buildOpenQuestions(sentences: string[], keywords: KeywordScore[], amount: number) {
   const selectedSentences = shuffle(sentences).slice(0, amount * 2);
 
-  const questions: Question[] = selectedSentences.slice(0, amount).map((sentence, index) => {
+  return selectedSentences.slice(0, amount).map((sentence, index) => {
     const key = keywords[index % keywords.length]?.word ?? "kernbegrip";
 
     return {
       id: `open-${index}`,
-      type: "Open vraag",
+      type: "Open vraag" as const,
       prompt: `Leg uit wat "${key}" betekent in de context van de leerstof en gebruik de bron om je uitleg te onderbouwen.`,
       tip: "Noem minimaal 2 kernpunten en sluit af met een concreet voorbeeld.",
       answer: sentence,
       source: sentence,
     };
   });
-
-  return questions;
 }
 
 function createClozeSentence(sentence: string, answer: string) {
@@ -236,7 +242,7 @@ function buildMcQuestions(sentences: string[], keywords: KeywordScore[], amount:
     }
 
     const distractors = dedupe(
-      keywordPool.filter((word) => word !== answer && !sentence.toLowerCase().includes(word)).slice(0, 8),
+      keywordPool.filter((word) => word !== answer && !sentence.toLowerCase().includes(word)).slice(0, 10),
     )
       .filter((word) => Math.abs(word.length - answer.length) <= 6)
       .slice(0, 3);
@@ -319,12 +325,21 @@ export default function Home() {
   const [sourcePreview, setSourcePreview] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
 
   const stats = useMemo(() => {
     const open = quiz.filter((q) => q.type === "Open vraag").length;
     const mc = quiz.filter((q) => q.type === "Meerkeuze").length;
     return { open, mc, total: quiz.length };
   }, [quiz]);
+
+  const fileStats = useMemo(() => {
+    return {
+      text: processedFiles.filter((f) => f.status === "text").length,
+      metadata: processedFiles.filter((f) => f.status === "metadata").length,
+      error: processedFiles.filter((f) => f.status === "error").length,
+    };
+  }, [processedFiles]);
 
   const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -359,10 +374,11 @@ export default function Home() {
     });
 
     setUploadedFiles(remaining);
+    setProcessedFiles((current) => current.filter((entry) => entry.fileName !== fileToRemove.name));
     setFeedbackMessage(`Bestand verwijderd. Nog ${remaining.length} bestand(en) geselecteerd.`);
   };
 
-  const readFileSafely = async (file: File) => {
+  const readFileSafely = async (file: File): Promise<ProcessedFile> => {
     const lowerName = file.name.toLowerCase();
     const isTextBased =
       file.type.startsWith("text/") || TEXT_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
@@ -371,18 +387,39 @@ export default function Home() {
       try {
         const pdfText = normalizeText(await readPdfText(file));
 
-        if (pdfText.length < 80) {
-          return `Bestandscontext: ${file.name}. De PDF bevatte te weinig uitleesbare tekst (mogelijk scan/afbeelding-PDF).`;
+        if (pdfText.length < 120) {
+          return {
+            fileName: file.name,
+            status: "metadata",
+            message:
+              "PDF bevatte bijna geen selecteerbare tekst. Waarschijnlijk een scan/afbeeldings-PDF.",
+            text: "",
+          };
         }
 
-        return `Bestandsbron: ${file.name}\n${pdfText.slice(0, 24000)}`;
+        return {
+          fileName: file.name,
+          status: "text",
+          message: `PDF-tekst ingelezen (${Math.round(pdfText.length / 1000)}k tekens).`,
+          text: `Bestandsbron: ${file.name}\n${pdfText.slice(0, 28000)}`,
+        };
       } catch {
-        return `Bestandscontext: ${file.name}. De PDF kon niet goed worden uitgelezen.`;
+        return {
+          fileName: file.name,
+          status: "error",
+          message: "PDF kon niet worden uitgelezen.",
+          text: "",
+        };
       }
     }
 
     if (!isTextBased) {
-      return `Bestandscontext: ${file.name} (type: ${file.type || "onbekend"}, grootte: ${Math.round(file.size / 1024)} KB).`;
+      return {
+        fileName: file.name,
+        status: "metadata",
+        message: "Bestandstype zonder directe tekstextractie (alleen context).",
+        text: "",
+      };
     }
 
     try {
@@ -390,12 +427,27 @@ export default function Home() {
       const normalized = normalizeText(text);
 
       if (normalized.length < 20) {
-        return `Bestandscontext: ${file.name}. Dit bestand bevat erg weinig leesbare tekst.`;
+        return {
+          fileName: file.name,
+          status: "metadata",
+          message: "Bevat te weinig bruikbare tekst.",
+          text: "",
+        };
       }
 
-      return `Bestandsbron: ${file.name}\n${normalized.slice(0, 18000)}`;
+      return {
+        fileName: file.name,
+        status: "text",
+        message: `Tekstbestand ingelezen (${Math.round(normalized.length / 1000)}k tekens).`,
+        text: `Bestandsbron: ${file.name}\n${normalized.slice(0, 22000)}`,
+      };
     } catch {
-      return `Bestandscontext: ${file.name}. De inhoud kon niet gelezen worden, maar bestandsinformatie is wel meegenomen.`;
+      return {
+        fileName: file.name,
+        status: "error",
+        message: "Bestand kon niet worden gelezen.",
+        text: "",
+      };
     }
   };
 
@@ -407,9 +459,15 @@ export default function Home() {
       ? Math.max(4, Math.min(24, Math.round(questionCount)))
       : 8;
 
-    const fileContentChunks = await Promise.all(uploadedFiles.map((file) => readFileSafely(file)));
+    const fileResults = await Promise.all(uploadedFiles.map((file) => readFileSafely(file)));
+    setProcessedFiles(fileResults);
 
-    const totalContent = [manualText, ...fileContentChunks]
+    const extractedFileText = fileResults
+      .filter((result) => result.status === "text")
+      .map((result) => result.text)
+      .filter(Boolean);
+
+    const totalContent = [manualText, ...extractedFileText]
       .map((chunk) => chunk.trim())
       .filter(Boolean)
       .join("\n\n")
@@ -419,7 +477,7 @@ export default function Home() {
       setQuiz([]);
       setSourcePreview("");
       setFeedbackMessage(
-        "Er is nog te weinig inhoud. Upload minstens één tekstbestand of plak enkele alinea's studietekst.",
+        "Er is te weinig echte tekst gevonden. Gebruik tekstselecteerbare bestanden of plak extra studietekst.",
       );
       setIsGenerating(false);
       return;
@@ -431,7 +489,7 @@ export default function Home() {
       setQuiz([]);
       setSourcePreview(totalContent.slice(0, 700));
       setFeedbackMessage(
-        "Ik kon nog geen sterke vragen maken. Gebruik meer lopende tekst (uitlegzinnen) voor betere kwaliteit.",
+        "Ik kon nog geen sterke vragen maken. Upload meer inhoudelijke tekst met volledige zinnen.",
       );
       setIsGenerating(false);
       return;
@@ -439,7 +497,7 @@ export default function Home() {
 
     setQuiz(nextQuiz);
     setSourcePreview(totalContent.slice(0, 700));
-    setFeedbackMessage(`Klaar! ${nextQuiz.length} vragen gegenereerd op basis van je bronmateriaal.`);
+    setFeedbackMessage(`Klaar! ${nextQuiz.length} vragen gemaakt op basis van de INHOUD van je bestanden.`);
     setIsGenerating(false);
   };
 
@@ -454,8 +512,8 @@ export default function Home() {
             Upload je lesmateriaal en maak betere oefenvragen
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-600 md:text-base">
-            Vernieuwd voor studenten: betere vraagkwaliteit, sterkere multiple-choice opties en een
-            betrouwbaarder bestandssysteem met meerdere uploads en verwijder-knoppen.
+            De toets wordt nu alleen gemaakt op basis van echte uitgelezen tekst uit jouw bronnen,
+            niet op bestandsnaam/titel.
           </p>
 
           <div className="mt-6 grid gap-5">
@@ -473,9 +531,13 @@ export default function Home() {
             {uploadedFiles.length > 0 ? (
               <ul className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
                 {uploadedFiles.map((file) => (
-                  <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-3">
+                  <li
+                    key={`${file.name}-${file.size}-${file.lastModified}`}
+                    className="flex items-center justify-between gap-3"
+                  >
                     <span className="truncate">
-                      {file.name} <span className="text-slate-500">({Math.max(1, Math.round(file.size / 1024))} KB)</span>
+                      {file.name}{" "}
+                      <span className="text-slate-500">({Math.max(1, Math.round(file.size / 1024))} KB)</span>
                     </span>
                     <button
                       type="button"
@@ -561,13 +623,29 @@ export default function Home() {
             </div>
           </div>
 
+          <div className="mt-4 rounded-xl border border-slate-700 bg-slate-800 p-3 text-xs text-slate-300">
+            <p className="font-semibold text-white">Bestandsanalyse</p>
+            <p className="mt-1">Tekst gelezen: {fileStats.text}</p>
+            <p>Alleen metadata: {fileStats.metadata}</p>
+            <p>Fouten: {fileStats.error}</p>
+            {processedFiles.length > 0 ? (
+              <ul className="mt-2 grid gap-1">
+                {processedFiles.map((file) => (
+                  <li key={file.fileName}>
+                    <span className="font-medium">{file.fileName}:</span> {file.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+
           {sourcePreview ? (
             <p className="mt-5 rounded-xl border border-slate-700 bg-slate-800 p-3 text-xs leading-5 text-slate-300">
               <strong>Bron-preview:</strong> {sourcePreview}...
             </p>
           ) : (
             <p className="mt-5 text-sm text-slate-300">
-              Nog geen broninhoud verwerkt. Upload bestanden of plak tekst en klik op{' '}
+              Nog geen broninhoud verwerkt. Upload bestanden of plak tekst en klik op{" "}
               <strong>Genereer oefentoets</strong>.
             </p>
           )}
@@ -578,7 +656,7 @@ export default function Home() {
         <h2 className="text-2xl font-bold">Automatisch gegenereerde vragen</h2>
         {quiz.length === 0 ? (
           <p className="mt-3 text-sm text-slate-600">
-            Tip: gebruik lopende uitlegzinnen in je bronmateriaal voor de beste kwaliteit.
+            Tip: gebruik bestanden met selecteerbare tekst. Scans/afbeeldings-PDF&apos;s geven vaak weinig tekst terug.
           </p>
         ) : (
           <ol className="mt-5 grid gap-4">

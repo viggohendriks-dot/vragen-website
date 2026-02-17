@@ -162,6 +162,28 @@ function shuffle<T>(items: T[]) {
   return copy;
 }
 
+async function readPdfText(file: File) {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await getDocument({ data, disableWorker: true }).promise;
+
+  const pages: string[] = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+    const lines = textContent.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ")
+      .trim();
+
+    if (lines) {
+      pages.push(lines);
+    }
+  }
+
+  return pages.join("\n");
+}
+
 function buildOpenQuestions(sentences: string[], keywords: KeywordScore[], amount: number) {
   const selectedSentences = shuffle(sentences).slice(0, amount * 2);
 
@@ -344,6 +366,20 @@ export default function Home() {
     const lowerName = file.name.toLowerCase();
     const isTextBased =
       file.type.startsWith("text/") || TEXT_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+
+    if (lowerName.endsWith(".pdf") || file.type === "application/pdf") {
+      try {
+        const pdfText = normalizeText(await readPdfText(file));
+
+        if (pdfText.length < 80) {
+          return `Bestandscontext: ${file.name}. De PDF bevatte te weinig uitleesbare tekst (mogelijk scan/afbeelding-PDF).`;
+        }
+
+        return `Bestandsbron: ${file.name}\n${pdfText.slice(0, 24000)}`;
+      } catch {
+        return `Bestandscontext: ${file.name}. De PDF kon niet goed worden uitgelezen.`;
+      }
+    }
 
     if (!isTextBased) {
       return `Bestandscontext: ${file.name} (type: ${file.type || "onbekend"}, grootte: ${Math.round(file.size / 1024)} KB).`;

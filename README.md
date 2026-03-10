@@ -1,36 +1,123 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QuizGen – automatische oefentoetsen voor studenten
 
-## Getting Started
+Deze website maakt automatisch een oefentoets op basis van:
+- geüploade bestanden, en/of
+- tekst die je zelf plakt.
 
-First, run the development server:
+Je kunt kiezen tussen **open vragen**, **multiple choice**, of **beide**.
+
+## Waar vind ik de *nieuwe code* die ik moet plakken?
+De nieuwe code staat in dit bestand:
+
+- `app/page.tsx`
+
+Als je op je eigen computer nog de standaard Next.js pagina ziet, dan kun je:
+
+1. `app/page.tsx` openen in je editor (bijv. VS Code).
+2. De oude inhoud volledig verwijderen.
+3. De nieuwe inhoud uit dit project (`app/page.tsx`) erin plakken.
+4. Opslaan.
+5. De server opnieuw starten met `npm run dev`.
+
+Snelle controle of je de goede versie hebt:
+- de eerste regel in `app/page.tsx` is: `"use client";`
+- er staat een type in zoals: `type QuizMode = "open" | "mc" | "both";`
+
+## Starten (beginners)
+
+1. Open een terminal in de projectmap.
+2. Installeer dependencies:
+
+```bash
+npm install
+```
+
+3. Start de website:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open in je browser:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- http://localhost:3000
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Als je niet kunt typen in PowerShell
+Dat betekent meestal dat `npm run dev` nog draait (dit is normaal).
 
-## Learn More
+- Stoppen: `Ctrl + C`
+- Of open een tweede terminal-tab om extra commando's te typen.
 
-To learn more about Next.js, take a look at the following resources:
+## Handige checks
+Controleer of je in de juiste map zit:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+git status
+git log --oneline -n 3
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Controleer of de juiste pagina-code aanwezig is:
 
-## Deploy on Vercel
+```bash
+# Linux/macOS
+sed -n '1,40p' app/page.tsx
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Windows PowerShell
+type app\page.tsx
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Speciaal voor jouw situatie: je ziet wel de branch na `git fetch --all`
+Als `git branch -a` iets toont zoals:
+
+- `remotes/origin/codex/create-file-upload-quiz-website`
+
+dan staat de nieuwe code op die remote branch en moet je die eerst lokaal uitchecken.
+
+Gebruik in PowerShell exact:
+
+```powershell
+git checkout -b codex/create-file-upload-quiz-website origin/codex/create-file-upload-quiz-website
+npm install
+npm run dev
+```
+
+Open daarna:
+
+- http://localhost:3000
+
+Controleer tenslotte:
+
+```powershell
+type app\page.tsx
+```
+
+Als het goed is, begint regel 1 met `"use client";`.
+
+## Fout in PowerShell: `npm.ps1 cannot be loaded because running scripts is disabled`
+Je screenshot laat precies deze Windows-beveiliging zien. Je project is goed; alleen PowerShell blokkeert `npm.ps1`.
+
+### Snelste oplossing (zonder policy aan te passen)
+Gebruik `npm.cmd` in plaats van `npm`:
+
+```powershell
+npm.cmd install
+npm.cmd run dev
+```
+
+### Alternatief (policy alleen voor jouw user versoepelen)
+Open PowerShell **als normale gebruiker** en run eenmalig:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Bevestig met `Y`, sluit PowerShell, open opnieuw, en run:
+
+```powershell
+npm install
+npm run dev
+```
+
+Daarna open je:
+
+- http://localhost:3000
